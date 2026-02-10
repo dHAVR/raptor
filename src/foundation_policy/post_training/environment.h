@@ -29,8 +29,9 @@ namespace builder{
                     observation::OrientationRotationMatrix<observation::OrientationRotationMatrixSpecification<T, TI,
                     observation::LinearVelocity<observation::LinearVelocitySpecification<T, TI,
                     observation::AngularVelocityDelayed<observation::AngularVelocityDelayedSpecification<T, TI, ANGULAR_VELOCITY_DELAY,
+                    observation::FlightMode<observation::FlightModeSpecification<T, TI,
                     observation::ActionHistory<observation::ActionHistorySpecification<T, TI, OPTIONS::ACTION_HISTORY ? OPTIONS::ACTION_HISTORY_LENGTH : 1 // one-step action history to Markovify the d_action regularization
-            >>>>>>>>>>;
+            >>>>>>>>>>>>;
             using OBSERVATION_TYPE_PRIVILEGED = OBSERVATION_TYPE;
             static constexpr bool PRIVILEGED_OBSERVATION_NOISE = false;
             using PARAMETERS = typename BASE_ENV::PARAMETERS_TYPE;

@@ -15,6 +15,18 @@ namespace rl_tools::rl::environments::l2f::parameters::reward_functions{
         constexpr TI ACTION_DIM = rl::environments::Multirotor<SPEC>::ACTION_DIM;
         STATE desired_state;
         get_desired_state(device, env, parameters, state, desired_state, rng);
+
+        // Mode-based Soft Target Adjustment (Reward Only)
+        int mode = (int)state.mode;
+        T offset = 0.5;
+        switch(mode){
+            case 1: desired_state.position[0] += offset; break;
+            case 2: desired_state.position[0] -= offset; break;
+            case 3: desired_state.position[1] += offset; break;
+            case 4: desired_state.position[1] -= offset; break;
+            case 5: desired_state.position[2] += offset; break;
+            case 6: desired_state.position[2] -= offset; break;
+        }
 //        components.orientation_cost = 1 - state.orientation[0] * state.orientation[0]; //math::abs(device.math, 2 * math::acos(device.math, quaternion_w));
         components.orientation_cost = 2*math::acos(device.math, 1-math::abs(device.math, state.orientation[3]));
         T x = state.position[0] - desired_state.position[0];

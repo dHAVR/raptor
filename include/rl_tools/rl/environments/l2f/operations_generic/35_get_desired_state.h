@@ -21,6 +21,7 @@ namespace rl_tools{
         desired_state.position[0] = 0;
         desired_state.position[1] = 0;
         desired_state.position[2] = 0;
+        
         desired_state.linear_velocity[0] = 0;
         desired_state.linear_velocity[1] = 0;
         desired_state.linear_velocity[2] = 0;

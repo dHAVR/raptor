@@ -7,6 +7,7 @@ if(RL_TOOLS_ENABLE_HDF5)
 
     add_executable(foundation_policy_post_training post_training/main.cpp)
     target_link_libraries(foundation_policy_post_training PRIVATE RLtools::RLtools)
+    target_include_directories(foundation_policy_post_training PRIVATE ../../external/json/include)
 
 #    add_executable(foundation_policy_post_training_sequential post_training/main_sequential.cpp)
 #    target_link_libraries(foundation_policy_post_training_sequential PRIVATE RLtools::RLtools)

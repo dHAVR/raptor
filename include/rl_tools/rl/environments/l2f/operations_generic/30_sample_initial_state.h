@@ -64,8 +64,20 @@ namespace rl_tools{
                 state.orientation[0] = 1;
                 state.orientation[1] = 0;
                 state.orientation[2] = 0;
+                state.orientation[2] = 0;
                 state.orientation[3] = 0;
             }
+            // Sample mode
+            if(parameters.mdp.init.fixed_mode >= 0){
+                state.mode = (T)parameters.mdp.init.fixed_mode;
+            }
+            else{
+                // Sample mode: 0 to 6 (Uniformly)
+                state.mode = (T)(int)random::uniform_real_distribution(random_dev, (T)0, (T)7, rng);
+            }
+            if(state.mode >= 7) state.mode = 6; // Clamp just in case
+            if(state.mode < 0) state.mode = 0;
+            
             if(!guidance) {
                 for(TI i = 0; i < 3; i++){
                     state.linear_velocity[i] = random::uniform_real_distribution(random_dev, -parameters.mdp.init.max_linear_velocity, parameters.mdp.init.max_linear_velocity, rng);

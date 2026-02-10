@@ -104,10 +104,24 @@ int main(int argc, char** argv){
     overwrite(params);
     for (const auto& [name, dynamics] : registry){
         params.dynamics = dynamics;
+        params.mdp.init.fixed_mode = -1; // Default to random mode (Student)
+
         std::ofstream output(output_path_registry / (name + ".json"));
         auto params_copy = params;
         output << rlt::json(device, env, params_copy);
         output.close();
+
+        // Generate specific mode configurations for "x500" (Teachers)
+        if(name == "x500"){
+            for(int m=0; m <= 6; m++){
+                params.mdp.init.fixed_mode = (T)m;
+                std::ofstream output_mode(output_path_registry / (name + "_mode_" + std::to_string(m) + ".json"));
+                auto params_copy_mode = params;
+                output_mode << rlt::json(device, env, params_copy_mode);
+                output_mode.close();
+            }
+            params.mdp.init.fixed_mode = -1; // Reset
+        }
     }
 
 }

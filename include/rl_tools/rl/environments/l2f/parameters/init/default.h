@@ -17,6 +17,7 @@ namespace rl_tools::rl::environments::l2f::parameters::init{
             true,// relative rpm
             -1,  // min rpm
             +1,  // max rpm
+            -1,  // fixed_mode (random)
     };
     template<typename SPEC>
     constexpr typename ParametersBase<SPEC>::MDP::Initialization init_90_deg = {
@@ -28,6 +29,7 @@ namespace rl_tools::rl::environments::l2f::parameters::init{
             true,// relative rpm
             -1,  // min rpm
             0,  // max rpm
+            -1,  // fixed_mode (random)
     };
     template<typename SPEC>
     constexpr typename ParametersBase<SPEC>::MDP::Initialization init_180_deg = {
@@ -39,6 +41,7 @@ namespace rl_tools::rl::environments::l2f::parameters::init{
             true,// relative rpm
             -1,  // min rpm
             +1,  // max rpm
+            -1,  // fixed_mode (random)
     };
     template<typename SPEC>
     constexpr typename ParametersBase<SPEC>::MDP::Initialization init_0_deg = {
@@ -50,6 +53,7 @@ namespace rl_tools::rl::environments::l2f::parameters::init{
             true,// relative rpm
             -1,  // min rpm
             +1,  // max rpm
+            -1,  // fixed_mode (random)
     };
 }
 RL_TOOLS_NAMESPACE_WRAPPER_END

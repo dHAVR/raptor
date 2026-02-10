@@ -1,7 +1,9 @@
 #ifndef RL_TOOLS_DEBUG_CONTAINER_CHECK_BOUNDS
 // #define RL_TOOLS_DEBUG_CONTAINER_CHECK_BOUNDS
 #endif
+
 #include <rl_tools/operations/cpu_mux.h>
+#include <rl_tools/rl/environments/l2f/operations_cpu.h>
 #include <rl_tools/nn/optimizers/adam/instance/operations_generic.h>
 #include <rl_tools/nn/operations_cpu_mux.h>
 #include <rl_tools/nn/layers/sample_and_squash/operations_generic.h>
@@ -147,9 +149,9 @@ int main(int argc, char** argv){
     T best_return = 0;
     bool best_return_set = false;
 
-#ifdef RL_TOOLS_ENABLE_TENSORBOARD
     auto timestamp_string = rlt::utils::extrack::get_timestamp_string();
     std::filesystem::path run_path = "logs/" + timestamp_string;
+#ifdef RL_TOOLS_ENABLE_TENSORBOARD
     rlt::init(device, device.logger, run_path.string());
 #endif
     rlt::init(device, rng, seed);

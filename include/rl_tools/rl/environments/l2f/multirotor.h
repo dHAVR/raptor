@@ -50,6 +50,7 @@ namespace rl_tools::rl::environments::l2f{
             bool relative_rpm; //(specification from -1 to 1)
             T min_rpm; // -1 for default limit when relative_rpm is true, -1 if relative_rpm is false
             T max_rpm; //  1 for default limit when relative_rpm is true, -1 if relative_rpm is false
+            T fixed_mode; // -1 for random sampling (Student), 0-6 for fixed mode (Teacher)
         };
         template <typename T>
         struct Termination{
@@ -428,6 +429,27 @@ namespace rl_tools::rl::environments::l2f{
             static constexpr TI CURRENT_DIM = 3 + 1;
             static constexpr TI DIM = NEXT_COMPONENT::DIM + CURRENT_DIM;
         };
+
+        template <typename T_T, typename T_TI, typename T_NEXT_COMPONENT = LastComponent<T_TI>>
+        struct FlightModeSpecification {
+            using T = T_T;
+            using TI = T_TI;
+            using NEXT_COMPONENT = T_NEXT_COMPONENT;
+            static constexpr bool PRIVILEGED = false;
+        };
+        template <typename T_T, typename T_TI, typename T_NEXT_COMPONENT = LastComponent<T_TI>>
+        struct FlightModeSpecificationPrivileged: FlightModeSpecification<T_T, T_TI, T_NEXT_COMPONENT>{
+            static constexpr bool PRIVILEGED = true;
+        };
+        template <typename SPEC>
+        struct FlightMode{
+            using T = typename SPEC::T;
+            using TI = typename SPEC::TI;
+            static constexpr bool PRIVILEGED = SPEC::PRIVILEGED;
+            using NEXT_COMPONENT = typename SPEC::NEXT_COMPONENT;
+            static constexpr TI CURRENT_DIM = 1;
+            static constexpr TI DIM = NEXT_COMPONENT::DIM + CURRENT_DIM;
+        };
         template <typename T_T, typename T_TI, typename T_NEXT_COMPONENT = LastComponent<T_TI>>
         struct RotorSpeedsSpecification {
             using T = T_T;
@@ -581,6 +603,7 @@ namespace rl_tools::rl::environments::l2f{
         T orientation[4];
         T linear_velocity[3];
         T angular_velocity[3];
+        T mode;
     };
     template <typename T_SPEC>
     struct StateLastAction: T_SPEC::NEXT_COMPONENT{ // This is necessary for the d_action term in the reward function. For action history observations please consider the variable length StateRotorsHistory
@@ -730,7 +753,7 @@ namespace rl_tools::rl::environments::l2f{
     template <typename T, typename TI, TI ACTION_HISTORY_LENGTH = 1, TI ANGULAR_VELOCITY_HISTORY = 0, bool CLOSED_FORM = false>
     using DefaultActionHistoryState = StateRotorsHistory<StateRotorsHistorySpecification<T, TI, ACTION_HISTORY_LENGTH, CLOSED_FORM, StateRandomForce<StateSpecification<T, TI, DefaultState<T, TI, ANGULAR_VELOCITY_HISTORY>>>>>;
     template <typename T, typename TI, TI ANGULAR_VELOCITY_DELAY=0, typename NEXT_OBSERVATION = observation::LastComponent<TI>>
-    using DefaultObservation = observation::TrajectoryTrackingPosition<observation::TrajectoryTrackingPositionSpecification<T, TI, observation::OrientationRotationMatrix<observation::OrientationRotationMatrixSpecification<T, TI, observation::TrajectoryTrackingLinearVelocity<observation::TrajectoryTrackingLinearVelocitySpecification<T, TI, observation::AngularVelocityDelayed<observation::AngularVelocityDelayedSpecification<T, TI, ANGULAR_VELOCITY_DELAY, NEXT_OBSERVATION>>>>>>>>;
+    using DefaultObservation = observation::TrajectoryTrackingPosition<observation::TrajectoryTrackingPositionSpecification<T, TI, observation::OrientationRotationMatrix<observation::OrientationRotationMatrixSpecification<T, TI, observation::TrajectoryTrackingLinearVelocity<observation::TrajectoryTrackingLinearVelocitySpecification<T, TI, observation::AngularVelocityDelayed<observation::AngularVelocityDelayedSpecification<T, TI, ANGULAR_VELOCITY_DELAY, observation::FlightMode<observation::FlightModeSpecification<T, TI, NEXT_OBSERVATION>>>>>>>>>>;
     template <typename T, typename TI, TI ACTION_HISTORY_LENGTH, TI ANGULAR_VELOCITY_DELAY=0, typename NEXT_OBSERVATION = observation::LastComponent<TI>>
     using DefaultActionHistoryObservation = DefaultObservation<T, TI, ANGULAR_VELOCITY_DELAY, observation::ActionHistory<observation::ActionHistorySpecification<T, TI, ACTION_HISTORY_LENGTH, NEXT_OBSERVATION>>>;
 
