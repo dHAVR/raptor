@@ -37,30 +37,21 @@ namespace rl_tools{
         void observe(DEVICE& device, L2F<SPEC>& executor, Observation<SPEC>& observation, Tensor<OBS_SPEC>& observation_flat){
             using TI = typename DEVICE::index_t;
             static_assert(OBS_SPEC::SHAPE::template GET<0> == 1);
-            static_assert(OBS_SPEC::SHAPE::template GET<1> == 18 + SPEC::OUTPUT_DIM * SPEC::ACTION_HISTORY_LENGTH); // position + orientation + linear_velocity + angular_velocity + action_history
+            static_assert(OBS_SPEC::SHAPE::template GET<1> == 18 + 1 + SPEC::OUTPUT_DIM * SPEC::ACTION_HISTORY_LENGTH); // position + orientation + linear_velocity + angular_velocity + flight_mode + action_history
             TI base = 0;
             set(device, observation_flat, observation.position[0], 0,  base++);
             set(device, observation_flat, observation.position[1], 0,  base++);
             set(device, observation_flat, observation.position[2], 0,  base++);
-            float qw = observation.orientation[0];
-            float qx = observation.orientation[1];
-            float qy = observation.orientation[2];
-            float qz = observation.orientation[3];
-            set(device, observation_flat,   (1 - 2*qy*qy - 2*qz*qz), 0, base++);
-            set(device, observation_flat,   (    2*qx*qy - 2*qw*qz), 0, base++);
-            set(device, observation_flat,   (    2*qx*qz + 2*qw*qy), 0, base++);
-            set(device, observation_flat,   (    2*qx*qy + 2*qw*qz), 0, base++);
-            set(device, observation_flat,   (1 - 2*qx*qx - 2*qz*qz), 0, base++);
-            set(device, observation_flat,   (    2*qy*qz - 2*qw*qx), 0, base++);
-            set(device, observation_flat,   (    2*qx*qz - 2*qw*qy), 0, base++);
-            set(device, observation_flat,   (    2*qy*qz + 2*qw*qx), 0, base++);
-            set(device, observation_flat,   (1 - 2*qx*qx - 2*qy*qy), 0, base++);
+            for(TI i=0; i<9; i++){
+                set(device, observation_flat, observation.orientation[i], 0, base++);
+            }
             set(device, observation_flat, observation.linear_velocity[0], 0, base++);
             set(device, observation_flat, observation.linear_velocity[1], 0, base++);
             set(device, observation_flat, observation.linear_velocity[2], 0, base++);
             set(device, observation_flat, observation.angular_velocity[0], 0, base++);
             set(device, observation_flat, observation.angular_velocity[1], 0, base++);
             set(device, observation_flat, observation.angular_velocity[2], 0, base++);
+            set(device, observation_flat, observation.flight_mode, 0, base++);
             for(TI step_i = 0; step_i < SPEC::ACTION_HISTORY_LENGTH; step_i++){
                 for(TI action_i = 0; action_i < SPEC::OUTPUT_DIM; action_i++){
                     set(device, observation_flat, executor.action_history[step_i][action_i], 0, base++);

@@ -16,7 +16,7 @@ namespace rl_tools::inference::applications::l2f{
     static constexpr TI INPUT_DIM = CONFIG::POLICY::INPUT_SHAPE::LAST;
     static constexpr TI OUTPUT_DIM = CONFIG::POLICY::OUTPUT_SHAPE::LAST;
     static_assert(OUTPUT_DIM == 4);
-    static_assert(INPUT_DIM == (18 + CONFIG::ACTION_HISTORY_LENGTH * OUTPUT_DIM));
+    static_assert(INPUT_DIM == (18 + 1 + CONFIG::ACTION_HISTORY_LENGTH * OUTPUT_DIM));
 
 
     // state
@@ -57,6 +57,8 @@ float rl_tools_inference_applications_l2f_test(RLtoolsInferenceApplicationsL2FAc
     rl_tools::Mode<rl_tools::mode::Evaluation<>> mode;
     float acc = 0;
     uint64_t num_values = 0;
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wfloat-equal"
     for(TI batch_i = 0; batch_i < CONFIG::TEST_BATCH_SIZE_ACTUAL; batch_i++){
         rl_tools::reset(device, rl_tools::checkpoint::actor::module, policy_state_test, rng);
         for(TI step_i = 0; step_i < CONFIG::TEST_SEQUENCE_LENGTH_ACTUAL; step_i++){
@@ -76,6 +78,7 @@ float rl_tools_inference_applications_l2f_test(RLtoolsInferenceApplicationsL2FAc
             }
         }
     }
+    #pragma GCC diagnostic pop
     return acc / num_values;
 #else
     return 0;
@@ -88,11 +91,13 @@ RLtoolsInferenceExecutorStatus rl_tools_inference_applications_l2f_control(RLtoo
     rl_tools::inference::applications::l2f::Observation<SPEC> observation;
     for (TI dim_i = 0; dim_i < 3; dim_i++){
         observation.position[dim_i] = c_observation->position[dim_i];
-        observation.orientation[dim_i] = c_observation->orientation[dim_i];
         observation.linear_velocity[dim_i] = c_observation->linear_velocity[dim_i];
         observation.angular_velocity[dim_i] = c_observation->angular_velocity[dim_i];
     }
-    observation.orientation[3] = c_observation->orientation[3];
+    for(TI dim_i = 0; dim_i < 9; dim_i++){
+        observation.orientation[dim_i] = c_observation->orientation[dim_i];
+    }
+    observation.flight_mode = c_observation->flight_mode[0];
     for (TI action_i=0; action_i < OUTPUT_DIM; action_i++){
         observation.previous_action[action_i] = c_observation->previous_action[action_i];
     }

@@ -22,9 +22,10 @@ namespace rl_tools::inference::applications{
         struct Observation{
             using T = typename SPEC::T;
             T position[3];
-            T orientation[4]; // Quaternion: w, x, y, z
+            T orientation[9]; // Rotation Matrix: R11, R12, R13, R21, R22, R23, R31, R32, R33
             T linear_velocity[3];
             T angular_velocity[3];
+            T flight_mode;
             T previous_action[4];
         };
         template <typename SPEC>
@@ -38,7 +39,7 @@ namespace rl_tools::inference::applications{
         using TI = typename SPEC::TI;
         using TIMESTAMP = typename SPEC::TIMESTAMP;
         T action_history[SPEC::ACTION_HISTORY_LENGTH][SPEC::OUTPUT_DIM];
-        static constexpr TI INPUT_DIM = 18 + SPEC::OUTPUT_DIM * SPEC::ACTION_HISTORY_LENGTH;
+        static constexpr TI INPUT_DIM = 18 + 1 + SPEC::OUTPUT_DIM * SPEC::ACTION_HISTORY_LENGTH;
         Tensor<tensor::Specification<T, TI, tensor::Shape<TI, 1, INPUT_DIM>, SPEC::DYNAMIC_ALLOCATION>> input;
         Tensor<tensor::Specification<T, TI, tensor::Shape<TI, 1, SPEC::OUTPUT_DIM>, SPEC::DYNAMIC_ALLOCATION>> output;
         Executor<typename SPEC::EXECUTOR_SPEC> executor;

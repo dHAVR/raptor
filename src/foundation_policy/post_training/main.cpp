@@ -57,7 +57,42 @@
 namespace rlt = rl_tools;
 
 #include "helper.h"
+#include <filesystem>
+#include <iostream>
+#include <iomanip>
+#include <sstream>
 
+
+// --- Helper Function: Find checkpoint recursively ignoring parent date folders ---
+std::filesystem::path find_checkpoint_recursive(const std::filesystem::path& base_dir, const std::string& dynamics_id, const std::string& step) {
+    if (!std::filesystem::exists(base_dir)) {
+        std::cerr << "Base directory does not exist: " << base_dir << std::endl;
+        return "";
+    }
+
+    // Format step to 15 digits padding with zeros (e.g., 250000 -> 000000000250000)
+    std::ostringstream ss;
+    ss << std::setw(15) << std::setfill('0') << step;
+    std::string padded_step = ss.str();
+
+    // Iterate recursively through experiments/
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(base_dir)) {
+        if (entry.is_directory()) {
+            // Check if this directory matches the dynamics_id (e.g., "115")
+            if (entry.path().filename() == dynamics_id) {
+                // Construct the expected full path
+                // Structure: .../experiments/DATE/HASH_NAME/115/0000/steps/000000000250000/checkpoint.h5
+                auto potential_path = entry.path() / "0000" / "steps" / padded_step / "checkpoint.h5";
+                
+                if (std::filesystem::exists(potential_path)) {
+                    return potential_path;
+                }
+            }
+        }
+    }
+    return "";
+}
+// ------------------------------------------------------------------------------
 
 using DEVICE = rlt::devices::DEVICE_FACTORY<>;
 using RNG = DEVICE::SPEC::RANDOM::ENGINE<>;
@@ -96,6 +131,7 @@ int main(int argc, char** argv){
     RNG rng;
     ACTOR_TEACHER actor_teacher[NUM_TEACHERS];
     ENVIRONMENT_TEACHER::Parameters teacher_parameters[NUM_TEACHERS];
+    bool teacher_valid[NUM_TEACHERS]; // Track valid teachers
     typename ACTOR_TEACHER::Buffer<> actor_teacher_buffer;
     ACTOR actor, best_actor;
     ACTOR::Buffer<> actor_buffer;
@@ -168,9 +204,16 @@ int main(int argc, char** argv){
     checkpoint_path.experiment = "2025-04-16_20-10-58";
     checkpoint_path.name = "foundation-policy-pre-training";
 
-    std::filesystem::path dynamics_parameters_path = "./src/foundation_policy/dynamics_parameters_" + checkpoint_path.experiment + "/";
-    std::filesystem::path dynamics_parameter_index = "./src/foundation_policy/checkpoints_" + checkpoint_path.experiment + ".txt";
-    // std::filesystem::path dynamics_parameter_index = "./src/foundation_policy/checkpoints_debug.txt";
+    // --- FIX PATHS: POINT TO THE SPECIFIC PATH PROVIDED ---
+    // User path: .../build/src/foundation_policy/dynamics_parameters
+    // Since we are running from 'build', the relative path is:
+    std::filesystem::path dynamics_parameters_path = "src/foundation_policy/dynamics_parameters/";
+    
+    // checkpoints.txt is in build/ (current dir)
+    std::filesystem::path dynamics_parameter_index = "checkpoints.txt";
+
+    // Define the base directory for experiments
+    std::filesystem::path experiments_base_dir = "experiments";
 
     std::ifstream dynamics_parameter_index_file(dynamics_parameter_index);
     if (!dynamics_parameter_index_file){
@@ -194,13 +237,66 @@ int main(int argc, char** argv){
     for (TI teacher_i=0; teacher_i < NUM_TEACHERS; ++teacher_i){
         // load actor & critic
         auto checkpoint_info = dynamics_parameter_index_lines[dynamics_parameter_index_lines.size() - 1 - teacher_i];
-        auto checkpoint_info_split = split_by_comma(checkpoint_info);
+        std::string checkpoint_info_str = checkpoint_info;
         auto cpp_copy = checkpoint_path;
-        cpp_copy.attributes["dynamics-id"] = checkpoint_info_split[0]; // take from the end because we order by performance and the best are at the end
-        cpp_copy.step = checkpoint_info_split[1];
-        rlt::find_latest_run(device, "1k-experiments", cpp_copy);
-        auto actor_file = HighFive::File(cpp_copy.checkpoint_path.string(), HighFive::File::ReadOnly);
-        rlt::load(device, actor_teacher[teacher_i], actor_file.getGroup("actor"));
+        std::string target_dynamics_id;
+        std::string target_step;
+
+        if (checkpoint_info_str.find(',') != std::string::npos) {
+            auto checkpoint_info_split = split_by_comma(checkpoint_info_str);
+            target_dynamics_id = checkpoint_info_split[0]; 
+            target_step = checkpoint_info_split[1];
+            auto found_path = find_checkpoint_recursive(experiments_base_dir, target_dynamics_id, target_step);
+            if (found_path.empty()) {
+                std::cerr << "Error: Could not find checkpoint for dynamics-id: " << target_dynamics_id 
+                          << " step: " << target_step << " in " << experiments_base_dir << std::endl;
+                continue; 
+            }
+            cpp_copy.checkpoint_path = found_path;
+        } else {
+            // Assume full path provided in checkpoints.txt
+            std::filesystem::path p(checkpoint_info_str);
+            if (!std::filesystem::exists(p)) {
+                 // Try relative to current directory if not found
+                 if (std::filesystem::exists(std::filesystem::current_path() / p)) {
+                     p = std::filesystem::current_path() / p;
+                 } else {
+                     std::cerr << "Error: Checkpoint file not found: " << p << std::endl;
+                     continue;
+                 }
+            }
+            cpp_copy.checkpoint_path = p;
+            
+            // Extract ID and Step from path structure: .../ID/0000/steps/STEP/checkpoint.h5
+            // Standard structure expected by training output
+            if (p.has_parent_path()) {
+                auto id_dir_file = p.parent_path().parent_path().parent_path().parent_path();
+                target_dynamics_id = id_dir_file.filename().string();
+                
+                auto step_dir_file = p.parent_path();
+                target_step = step_dir_file.filename().string();
+            }
+        }
+
+        cpp_copy.attributes["dynamics-id"] = target_dynamics_id;
+        cpp_copy.step = target_step;
+
+        std::cout << "Loading teacher " << teacher_i << " (DynID: " << target_dynamics_id << ") from: " << cpp_copy.checkpoint_path << std::endl;
+
+        try {
+            if (std::filesystem::file_size(cpp_copy.checkpoint_path) == 0) {
+                 throw std::runtime_error("File is empty");
+            }
+            auto actor_file = HighFive::File(cpp_copy.checkpoint_path.string(), HighFive::File::ReadOnly);
+            rlt::load(device, actor_teacher[teacher_i], actor_file.getGroup("actor"));
+            teacher_valid[teacher_i] = true; // Mark as valid
+        } catch (const std::exception& e) {
+            std::cerr << "Error loading checkpoint: " << e.what() << std::endl;
+            std::cerr << "Skipping teacher " << teacher_i << std::endl;
+            rlt::init_weights(device, actor_teacher[teacher_i], rng); 
+            teacher_valid[teacher_i] = false; // Mark as invalid
+            continue;
+        }
 
         std::ifstream dynamics_parameter_file = std::ifstream(dynamics_parameters_path / (cpp_copy.attributes["dynamics-id"] + ".json"));
         std::string dynamics_parameter_json((std::istreambuf_iterator<char>(dynamics_parameter_file)), std::istreambuf_iterator<char>());
@@ -261,6 +357,7 @@ int main(int argc, char** argv){
 
         if (epoch_i < EPOCH_TEACHER_FORCING || TEACHER_STUDENT_MIX > 0){ // start with behavioral cloning (data gathering using teacher)
             for (TI teacher_i=0; teacher_i < NUM_TEACHERS; teacher_i++){
+                if (!teacher_valid[teacher_i]) continue; // Skip invalid teachers
                 auto teacher_meta = rlt::get(device, teacher_metas, teacher_i);
                 constexpr TI TEACHER_EPOCHS = (TEACHER_STUDENT_MIX > 0 ? TEACHER_STUDENT_MIX : 1);
                 for (TI teacher_epoch_i = 0; teacher_epoch_i < TEACHER_EPOCHS; teacher_epoch_i++){
@@ -283,6 +380,11 @@ int main(int argc, char** argv){
             std::vector<std::tuple<TI, T>> active_teachers;
             rlt::rl::utils::evaluation::Data<rlt::rl::utils::evaluation::DataSpecification<RESULT::SPEC>> datas[NUM_TEACHERS];
             for (TI teacher_i=0; teacher_i < NUM_TEACHERS; teacher_i++){
+                if (!teacher_valid[teacher_i]) {
+                    // Initialize dummy result for invalid teachers to avoid sorting issues, but don't use them
+                    results[teacher_i].returns_mean = -1e9; 
+                    continue; 
+                }
                 rlt::malloc(device, datas[teacher_i]);
                 auto& result = results[teacher_i];
                 auto& data = datas[teacher_i];
@@ -304,6 +406,7 @@ int main(int argc, char** argv){
             };
             auto indices = argsort(active_teachers, [](const auto& a, const auto& b) { return std::get<1>(a) < std::get<1>(b); }); // ascending order
             for (TI teacher_i=0; teacher_i < NUM_TEACHERS; teacher_i++){
+                if (!teacher_valid[teacher_i]) continue;
                 if (indices[teacher_i] < NUM_ACTIVE_TEACHERS){
                     auto teacher_meta = rlt::get(device, teacher_metas, teacher_i);
                     add_to_dataset<ENVIRONMENT, ENVIRONMENT_TEACHER::Observation, ENVIRONMENT::Observation, TEACHER_DETERMINISTIC>(device, datas[teacher_i], actor_teacher[teacher_i], teacher_meta, dataset_episode_start_indices, dataset_input, dataset_output_target, dataset_truncated, dataset_reset, current_episode, current_index, rng);
@@ -425,12 +528,12 @@ int main(int argc, char** argv){
             RESULT_EVAL result_eval;
             DATA_EVAL data_eval;
             rlt::evaluate(device, env_eval, ui, evaluation_actor, result_eval, data_eval, rng, mode);
-            rlt::add_scalar(device, device.logger, "crazyflie/return/mean", result_eval.returns_mean);
-            rlt::add_scalar(device, device.logger, "crazyflie/return/std", result_eval.returns_std);
-            rlt::add_scalar(device, device.logger, "crazyflie/episode_length/mean", result_eval.episode_length_mean);
-            rlt::add_scalar(device, device.logger, "crazyflie/episode_length/std", result_eval.episode_length_std);
-            rlt::add_scalar(device, device.logger, "crazyflie/share_terminated", result_eval.share_terminated);
-            rlt::log(device, device.logger, "Crazyflie: Mean return: ", result_eval.returns_mean, " Mean episode length: ", result_eval.episode_length_mean, " Share terminated: ", result_eval.share_terminated * 100, "%");
+            rlt::add_scalar(device, device.logger, "x500/return/mean", result_eval.returns_mean);
+            rlt::add_scalar(device, device.logger, "x500/return/std", result_eval.returns_std);
+            rlt::add_scalar(device, device.logger, "x500/episode_length/mean", result_eval.episode_length_mean);
+            rlt::add_scalar(device, device.logger, "x500/episode_length/std", result_eval.episode_length_std);
+            rlt::add_scalar(device, device.logger, "x500/share_terminated", result_eval.share_terminated);
+            rlt::log(device, device.logger, "x500: Mean return: ", result_eval.returns_mean, " Mean episode length: ", result_eval.episode_length_mean, " Share terminated: ", result_eval.share_terminated * 100, "%");
 
             rlt::free(device, evaluation_actor);
             rlt::free(device, eval_buffer);

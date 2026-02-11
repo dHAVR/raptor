@@ -35,7 +35,11 @@
 #include <rl_tools/nn_models/multi_agent_wrapper/persist.h>
 #include <rl_tools/rl/components/replay_buffer/persist.h>
 
-// #include "../../../logs/2025-03-26_11-06-24/checkpoints/86/checkpoint.h"
+#include <filesystem>
+#include <iostream>
+#include <iomanip>
+#include <sstream>
+#include <map>
 
 
 namespace rlt = rl_tools;
@@ -49,6 +53,36 @@ using TI = typename DEVICE::index_t;
 #include "../pre_training/config.h"
 #include "../pre_training/options.h"
 #include "helper.h"
+
+// --- Helper Function: Find checkpoint recursively ignoring parent date folders ---
+std::filesystem::path find_checkpoint_recursive(const std::filesystem::path& base_dir, const std::string& dynamics_id, const std::string& step) {
+    if (!std::filesystem::exists(base_dir)) {
+        return "";
+    }
+
+    // Format step to 15 digits padding with zeros (e.g., 250000 -> 000000000250000)
+    std::ostringstream ss;
+    ss << std::setw(15) << std::setfill('0') << step;
+    std::string padded_step = ss.str();
+
+    // Iterate recursively through experiments/
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(base_dir)) {
+        if (entry.is_directory()) {
+            // Check if this directory matches the dynamics_id (e.g., "115")
+            if (entry.path().filename() == dynamics_id) {
+                // Construct the expected full path
+                // Structure: .../experiments/DATE/HASH_NAME/115/0000/steps/000000000250000/checkpoint.h5
+                auto potential_path = entry.path() / "0000" / "steps" / padded_step / "checkpoint.h5";
+                
+                if (std::filesystem::exists(potential_path)) {
+                    return potential_path;
+                }
+            }
+        }
+    }
+    return "";
+}
+// ------------------------------------------------------------------------------
 
 static constexpr bool DYNAMIC_ALLOCATION = true;
 static constexpr TI NUM_EPISODES_EVAL = 100;
@@ -85,8 +119,14 @@ int main(){
 
     // cf like: 203; 139; 334; 31;
 
-    std::filesystem::path dynamics_parameters_path = "./src/foundation_policy/dynamics_parameters_" + checkpoint_path.experiment + "/";
-    std::filesystem::path dynamics_parameter_index = "./src/foundation_policy/checkpoints_" + checkpoint_path.experiment + ".txt";
+
+    std::filesystem::path dynamics_parameters_path = "src/foundation_policy/dynamics_parameters/";
+    std::filesystem::path dynamics_parameter_index = "checkpoints.txt";
+
+    // Define the base directory for experiments
+    std::filesystem::path experiments_base_dir = "experiments";
+
+
 
 
     std::vector<std::tuple<std::string, ENVIRONMENT::Parameters::Dynamics>> query_dynamics;
@@ -97,10 +137,7 @@ int main(){
         return copy;
     };
 
-    query_dynamics.emplace_back("crazyflie", rlt::rl::environments::l2f::parameters::dynamics::crazyflie<ENVIRONMENT::SPEC::T, ENVIRONMENT::SPEC::TI>);
     query_dynamics.emplace_back("x500", permute_rotors_px4_to_cf(rlt::rl::environments::l2f::parameters::dynamics::x500::real<ENVIRONMENT::SPEC::T, ENVIRONMENT::SPEC::TI>));
-    query_dynamics.emplace_back("mrs", permute_rotors_px4_to_cf(rlt::rl::environments::l2f::parameters::dynamics::mrs<ENVIRONMENT::SPEC::T, ENVIRONMENT::SPEC::TI>));
-    query_dynamics.emplace_back("fs", permute_rotors_px4_to_cf(rlt::rl::environments::l2f::parameters::dynamics::fs::base<ENVIRONMENT::SPEC::T, ENVIRONMENT::SPEC::TI>));
 
     std::ifstream dynamics_parameter_index_file(dynamics_parameter_index);
     if (!dynamics_parameter_index_file){
@@ -133,16 +170,77 @@ int main(){
         rlt::init(device, rank_rng, seed + teacher_i);
         // load actor & critic
         auto checkpoint_info = dynamics_parameter_index_lines[dynamics_parameter_index_lines.size() - 1 - teacher_i];
-        auto checkpoint_info_split = split_by_comma(checkpoint_info);
+        std::string checkpoint_info_str = checkpoint_info;
         auto cpp_copy = checkpoint_path;
-        cpp_copy.attributes["dynamics-id"] = checkpoint_info_split[0]; // take from the end because we order by performance and the best are at the end
-        cpp_copy.step = checkpoint_info_split[1];
-        bool found = rlt::find_latest_run(device, "1k-experiments", cpp_copy);
-        if (!found){
-            std::cerr << "Could not find checkpoint: " << cpp_copy.checkpoint_path.string() << std::endl;
+        std::string target_dynamics_id;
+        std::string target_step;
+
+        if (checkpoint_info_str.find(',') != std::string::npos) {
+            auto checkpoint_info_split = split_by_comma(checkpoint_info_str);
+            target_dynamics_id = checkpoint_info_split[0]; 
+            target_step = checkpoint_info_split[1];
+            auto found_path = find_checkpoint_recursive(experiments_base_dir, target_dynamics_id, target_step);
+            if (found_path.empty()) {
+                std::cerr << "Error: Could not find checkpoint for dynamics-id: " << target_dynamics_id 
+                          << " step: " << target_step << " in " << experiments_base_dir << std::endl;
+                rlt::free(device, rank_rng);
+                rlt::free(device, evaluation_actor);
+                rlt::free(device, eval_buffer);
+                continue; 
+            }
+            cpp_copy.checkpoint_path = found_path;
+        } else {
+             // Assume full path provided in checkpoints.txt
+             std::filesystem::path p(checkpoint_info_str);
+             if (!std::filesystem::exists(p)) {
+                 if (std::filesystem::exists(std::filesystem::current_path() / p)) {
+                     p = std::filesystem::current_path() / p;
+                 } else {
+                     std::cerr << "Error: Checkpoint file not found: " << p << std::endl;
+                     rlt::free(device, rank_rng);
+                     rlt::free(device, evaluation_actor);
+                     rlt::free(device, eval_buffer);
+                     continue;
+                 }
+             }
+             cpp_copy.checkpoint_path = p;
+             
+             if (p.has_parent_path()) {
+             if (p.has_parent_path()) {
+                 auto id_dir_file = p.parent_path().parent_path().parent_path().parent_path();
+                 target_dynamics_id = id_dir_file.filename().string();
+                 /*
+                 std::cout << "Original path: " << p << std::endl;
+                 std::cout << "Parent: " << p.parent_path() << std::endl;
+                 std::cout << "Parent 2: " << p.parent_path().parent_path() << std::endl;
+                 std::cout << "Parent 3: " << p.parent_path().parent_path().parent_path() << std::endl;
+                 std::cout << "Parent 4: " << p.parent_path().parent_path().parent_path().parent_path() << std::endl;
+                 */
+                 auto step_dir_file = p.parent_path();
+                 target_step = step_dir_file.filename().string();
+             }
+             }
         }
-        auto actor_file = HighFive::File(cpp_copy.checkpoint_path.string(), HighFive::File::ReadOnly);
-        rlt::load(device, evaluation_actor, actor_file.getGroup("actor"));
+        
+        cpp_copy.attributes["dynamics-id"] = target_dynamics_id;
+        cpp_copy.step = target_step;
+        
+        std::cout << "Loading teacher " << teacher_i << " (DynID: " << target_dynamics_id << ") from: " << cpp_copy.checkpoint_path << std::endl;
+
+        try {
+            if (std::filesystem::file_size(cpp_copy.checkpoint_path) == 0) {
+                 throw std::runtime_error("File is empty");
+            }
+            auto actor_file = HighFive::File(cpp_copy.checkpoint_path.string(), HighFive::File::ReadOnly);
+            rlt::load(device, evaluation_actor, actor_file.getGroup("actor"));
+        } catch (const std::exception& e) {
+             std::cerr << "Error loading checkpoint: " << e.what() << std::endl;
+             // For check_checkpoints, we can just skip this iteration entirely
+             rlt::free(device, rank_rng);
+             rlt::free(device, evaluation_actor);
+             rlt::free(device, eval_buffer);
+             continue;
+        }
 
         std::ifstream dynamics_parameter_file = std::ifstream(dynamics_parameters_path / (cpp_copy.attributes["dynamics-id"] + ".json"));
         std::string dynamics_parameter_json((std::istreambuf_iterator<char>(dynamics_parameter_file)), std::istreambuf_iterator<char>());
