@@ -84,7 +84,8 @@ namespace rl_tools{
             using OBSERVATION = observation::OrientationRotationMatrix<OBSERVATION_SPEC>;
             static_assert(OBS_SPEC::COLS >= OBSERVATION::CURRENT_DIM);
             static_assert(OBS_SPEC::ROWS == 1);
-            const typename SPEC::T* q = state.orientation;
+            const T* q = state.orientation;
+
             set(observation, 0, 0, (1 - 2*q[2]*q[2] - 2*q[3]*q[3]));
             set(observation, 0, 1, (    2*q[1]*q[2] - 2*q[0]*q[3]));
             set(observation, 0, 2, (    2*q[1]*q[3] + 2*q[0]*q[2]));

@@ -25,6 +25,17 @@ namespace rl_tools{
         desired_state.linear_velocity[0] = 0;
         desired_state.linear_velocity[1] = 0;
         desired_state.linear_velocity[2] = 0;
+
+        // Desired orientation
+        T yaw = 0;
+        if ((int)state.mode == 1) {
+            yaw = 1.57079632679; // 90 degrees
+        }
+        
+        desired_state.orientation[0] = cos(yaw / 2);
+        desired_state.orientation[1] = 0;
+        desired_state.orientation[2] = 0;
+        desired_state.orientation[3] = sin(yaw / 2);
     }
     template<typename DEVICE, typename SPEC, typename PARAMETERS, typename STATE_SPEC, typename RNG>
     RL_TOOLS_FUNCTION_PLACEMENT static void get_desired_state(DEVICE& device, const rl::environments::Multirotor<SPEC>& env, PARAMETERS& parameters, const rl::environments::l2f::StateTrajectory<STATE_SPEC>& state, rl::environments::l2f::StateTrajectory<STATE_SPEC>& desired_state, RNG& rng){

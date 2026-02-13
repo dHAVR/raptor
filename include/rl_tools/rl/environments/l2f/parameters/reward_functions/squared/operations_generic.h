@@ -20,33 +20,86 @@ namespace rl_tools::rl::environments::l2f::parameters::reward_functions{
         int mode = (int)state.mode;
         T offset = 0.5;
         switch(mode){
-            case 1: desired_state.position[0] += offset; break;
-            case 2: desired_state.position[0] -= offset; break;
-            case 3: desired_state.position[1] += offset; break;
-            case 4: desired_state.position[1] -= offset; break;
-            case 5: desired_state.position[2] += offset; break;
-            case 6: desired_state.position[2] -= offset; break;
+            case 2: desired_state.position[1] += offset; break; // Right (Mode 2 offset)
+            default: break; 
         }
-//        components.orientation_cost = 1 - state.orientation[0] * state.orientation[0]; //math::abs(device.math, 2 * math::acos(device.math, quaternion_w));
-        components.orientation_cost = 2*math::acos(device.math, 1-math::abs(device.math, state.orientation[3]));
+
+        // --- Orientation Cost: Relative Quaternion Error (The Fix for Mode 1) ---
+        T qw = state.orientation[0];
+        T qx = state.orientation[1];
+        T qy = state.orientation[2];
+        T qz = state.orientation[3];
+        
+        T t_qw = desired_state.orientation[0];
+        T t_qx = desired_state.orientation[1];
+        T t_qy = desired_state.orientation[2];
+        T t_qz = desired_state.orientation[3];
+        
+        // Calculate Relative Error Quaternion: q_err = q_target^-1 * q_curr
+        // q_err.w = dot(q_target, q_curr)
+        // q_err.z = t_w*q_z - t_x*q_y + t_y*q_x - t_z*q_w (We don't need z, just w for angle)
+        
+        // 1. Shortest Path Rotation Logic: 
+        // The angle of rotation is 2 * acos(|q_err.w|). 
+        // This finding the shortest path on the sphere.
+        
+        T q_dot = t_qw*qw + t_qx*qx + t_qy*qy + t_qz*qz;
+        T abs_q_dot = math::abs(device.math, q_dot);
+        if (abs_q_dot > 1.0) abs_q_dot = 1.0;
+        
+        // Cost based on angle difference (Relative to Target!)
+        components.orientation_cost = 2 * math::acos(device.math, abs_q_dot);
+
+        // --- Tilt Penalty (Pitch/Roll Stabilization) ---
+        // You requested to penalize changing pitch/roll while rotating.
+        // We calculate this in the GLOBAL frame to ensure stability relative to gravity.
+        // Tilt is determined by how far body Z-axis deviates from world Z-axis.
+        // Penalty = 2 * (qx^2 + qy^2) aproximates 1 - cos(tilt_angle)
+        
+        T tilt_penalty = 2 * (qx*qx + qy*qy);
+        
+        // We apply this penalty ALWAYS or Conditionally? 
+        // You said "punish for changing pitch/roll when rotating".
+        // Let's apply it with a weight. 
+        // Start with full application to ensure stability.
+        
+        T dist_sq = (state.position[0] - desired_state.position[0])*(state.position[0] - desired_state.position[0]) +
+                    (state.position[1] - desired_state.position[1])*(state.position[1] - desired_state.position[1]) +
+                    (state.position[2] - desired_state.position[2])*(state.position[2] - desired_state.position[2]);
+
+        T effective_tilt_weight = 0.0; 
+        // 1. Full penalty for Mode 1 (Rotation) - ensure flat spin per user request
+        // 2. Full penalty when hovering close to target (<0.5m) - ensures stable hold
+        if (mode == 1 || dist_sq < 0.25) { 
+            effective_tilt_weight = 1.0;
+        }
+        // During transit (e.g. Mode 2 moving to offset), weight is 0 to allow tilting for acceleration.
+        
+        components.orientation_cost += effective_tilt_weight * tilt_penalty;
+        // Angular Velocity Cost: Penalize ALL angular velocity
+        components.angular_vel_cost = math::sqrt(device.math, 
+            math::max(device.math, (T)0, state.angular_velocity[0] * state.angular_velocity[0] + 
+            state.angular_velocity[1] * state.angular_velocity[1] + 
+            state.angular_velocity[2] * state.angular_velocity[2])
+        );
         T x = state.position[0] - desired_state.position[0];
         T y = state.position[1] - desired_state.position[1];
         T z = state.position[2] - desired_state.position[2];
-        components.position_cost = math::sqrt(device.math, x*x + y*y + z*z);
+        components.position_cost = math::sqrt(device.math, math::max(device.math, (T)0, x*x + y*y + z*z));
         if(reward_parameters.position_clip > 0){
             components.position_cost = math::min(device.math, components.position_cost, reward_parameters.position_clip);
         }
         T vx = state.linear_velocity[0] - desired_state.linear_velocity[0];
         T vy = state.linear_velocity[1] - desired_state.linear_velocity[1];
         T vz = state.linear_velocity[2] - desired_state.linear_velocity[2];
-        components.linear_vel_cost = math::sqrt(device.math, vx*vx + vy*vy + vz*vz);
-        components.angular_vel_cost = math::sqrt(device.math, state.angular_velocity[0] * state.angular_velocity[0] + state.angular_velocity[1] * state.angular_velocity[1] + state.angular_velocity[2] * state.angular_velocity[2]);
+        components.linear_vel_cost = math::sqrt(device.math, math::max(device.math, (T)0, vx*vx + vy*vy + vz*vz));
+        // components.angular_vel_cost is already calculated in the if/else block based on mode
         T linear_acc[3];
         T angular_acc[3];
         rl_tools::utils::vector_operations::sub<DEVICE, T, 3>(next_state.linear_velocity, state.linear_velocity, linear_acc);
-        components.linear_acc_cost = math::sqrt(device.math, linear_acc[0] * linear_acc[0] + linear_acc[1] * linear_acc[1] + linear_acc[2] * linear_acc[2]) / parameters.integration.dt;
+        components.linear_acc_cost = math::sqrt(device.math, math::max(device.math, (T)0, linear_acc[0] * linear_acc[0] + linear_acc[1] * linear_acc[1] + linear_acc[2] * linear_acc[2])) / parameters.integration.dt;
         rl_tools::utils::vector_operations::sub<DEVICE, T, 3>(next_state.angular_velocity, state.angular_velocity, angular_acc);
-        components.angular_acc_cost = math::sqrt(device.math, angular_acc[0] * angular_acc[0] + angular_acc[1] * angular_acc[1] + angular_acc[2] * angular_acc[2]) / parameters.integration.dt;
+        components.angular_acc_cost = math::sqrt(device.math, math::max(device.math, (T)0, angular_acc[0] * angular_acc[0] + angular_acc[1] * angular_acc[1] + angular_acc[2] * angular_acc[2])) / parameters.integration.dt;
 
         T action_diff[ACTION_DIM];
         for(TI action_i = 0; action_i < ACTION_DIM; action_i++){
