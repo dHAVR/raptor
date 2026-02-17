@@ -60,8 +60,9 @@ int main(int argc, char** argv){
             0.005, // rotor_torque_constant_min;
             0.05, // rotor_torque_constant_max;
             0.0, // orientation_offset_angle_max;
-            0.5  // disturbance_force_max;
+            0.5, // disturbance_force_max;
         };
+        parameters.mdp.init.max_angle = 3.14159265359;
     };
     overwrite(env.parameters);
     rlt::sample_initial_parameters(device, env, params, rng);

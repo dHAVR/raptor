@@ -21,6 +21,11 @@ namespace rl_tools{
         desired_state.position[0] = 0;
         desired_state.position[1] = 0;
         desired_state.position[2] = 0;
+
+        // Mode 2: Offset Hold (0.5m Right [Y-axis])
+        if((int)state.mode == 2){
+            desired_state.position[1] = 0.5;
+        }
         
         desired_state.linear_velocity[0] = 0;
         desired_state.linear_velocity[1] = 0;
@@ -28,9 +33,7 @@ namespace rl_tools{
 
         // Desired orientation
         T yaw = 0;
-        if ((int)state.mode == 1) {
-            yaw = 1.57079632679; // 90 degrees
-        }
+        // The behavior is defined by starting at random yaw and returning to 0
         
         desired_state.orientation[0] = cos(yaw / 2);
         desired_state.orientation[1] = 0;
