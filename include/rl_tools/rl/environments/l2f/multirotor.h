@@ -6,8 +6,6 @@
 #include "../../../utils/generic/typing.h"
 
 #include "../environments.h"
-// #include "./parameters/reward_functions/default.h"
-// #include "./parameters/registry.h"
 
 RL_TOOLS_NAMESPACE_WRAPPER_START
 namespace rl_tools::rl::environments::l2f{
@@ -17,7 +15,6 @@ namespace rl_tools::rl::environments::l2f{
         using TI = T_TI;
         static constexpr TI N = T_N;
         using REWARD_FUNCTION = T_REWARD_FUNCTION;
-        // static constexpr REGISTRY MODEL = T_MODEL;
     };
     namespace parameters{
         template <typename T, typename TI, TI N>
@@ -37,7 +34,7 @@ namespace rl_tools::rl::environments::l2f{
             T gravity[3];
             T J[3][3];
             T J_inv[3][3];
-            T hovering_throttle_relative; // relative to the action limits [0, 1]
+            T hovering_throttle_relative; 
             ActionLimit action_limit;
         };
         template <typename T>
@@ -47,10 +44,10 @@ namespace rl_tools::rl::environments::l2f{
             T max_angle;
             T max_linear_velocity;
             T max_angular_velocity;
-            bool relative_rpm; //(specification from -1 to 1)
-            T min_rpm; // -1 for default limit when relative_rpm is true, -1 if relative_rpm is false
-            T max_rpm; //  1 for default limit when relative_rpm is true, -1 if relative_rpm is false
-            T fixed_mode; // -1 for random sampling (Student), 0-6 for fixed mode (Teacher)
+            bool relative_rpm; 
+            T min_rpm; 
+            T max_rpm; 
+            // fixed_mode ВИДАЛЕНО
         };
         template <typename T>
         struct Termination{
@@ -71,7 +68,7 @@ namespace rl_tools::rl::environments::l2f{
         };
         template <typename T>
         struct ActionNoise{
-            T normalized_rpm; // std of additive gaussian noise onto the normalized action (-1, 1)
+            T normalized_rpm; 
         };
         template <typename T>
         struct Integration{
@@ -102,35 +99,30 @@ namespace rl_tools::rl::environments::l2f{
             UnivariateGaussian random_torque;
         };
         template <typename T_T>
-        struct DomainRandomization{ // needs to be independent of the SPEC such that the dispatch in operations_cpu.h does not create issues
+        struct DomainRandomization{ 
             using T = T_T;
-            T thrust_to_weight_min; // cf: ~[1.5, 2]
+            T thrust_to_weight_min; 
             T thrust_to_weight_max;
-            T torque_to_inertia_min; // cf: torque_to_inertia ~[536, 933]
-            // => residual_torque_to_inertia (thrust2weight-1)/4*mass*9.81*radius/inertia
-            // 0.5/4*0.027*9.81*0.04/1e-5 = 132
-            // 1/4*0.031*9.81*0.04/8e-6 = 380
-            // => ~[123, 380] => [(1.5-1)/380=0.0013, (2-1)/123=0.0081]
+            T torque_to_inertia_min; 
             T torque_to_inertia_max;
-            T mass_min; // cf: ~[0.027 - 0.031]
+            T mass_min; 
             T mass_max;
-            T mass_size_deviation; // percentage variation around the nominal value derived from the mass scale and the sampled thrust to weight ratio
-            T rotor_time_constant_rising_min; // cf: rising: ~[0.05, 0.09], falling: ~[0.07, 0.3]
+            T mass_size_deviation; 
+            T rotor_time_constant_rising_min; 
             T rotor_time_constant_rising_max;
             T rotor_time_constant_falling_min;
             T rotor_time_constant_falling_max;
-            T rotor_torque_constant_min; // cf: ~0.005
+            T rotor_torque_constant_min; 
             T rotor_torque_constant_max;
             T orientation_offset_angle_max;
-            T disturbance_force_max; // in multiples of the surplus thrust to weight ratio max(0, t2w - 1.0)
+            T disturbance_force_max; 
         };
         template <typename T>
         static constexpr DomainRandomization<T> domain_randomization_disabled = {};
         template <typename T, typename TI>
         struct Trajectory{
-            static constexpr TI MIXTURE_N = 2; // enum TrajectoryType
+            static constexpr TI MIXTURE_N = 2; 
             T mixture[MIXTURE_N];
-            // Langevin
             struct Langevin{
                 T gamma;
                 T omega;
@@ -159,7 +151,6 @@ namespace rl_tools::rl::environments::l2f{
         using TI = T_TI;
         using NEXT_COMPONENT = T_NEXT_COMPONENT;
     };
-
 
     template <typename SPEC>
     struct ParametersDisturbances: SPEC::NEXT_COMPONENT{
@@ -208,21 +199,6 @@ namespace rl_tools::rl::environments::l2f{
         Trajectory trajectory;
     };
 
-
-//    enum class LatentStateType{
-//        Empty,
-//        RandomForce
-//    };
-//    enum class StateType{
-//        Base,
-//        BaseRotors,
-//        BaseRotorsHistory,
-//    };
-//    enum class ObservationType{
-//        Normal,
-//        DoubleQuaternion,
-//        RotationMatrix
-//    };
     namespace observation{
         template <typename T_TI>
         struct LastComponent{
@@ -249,7 +225,6 @@ namespace rl_tools::rl::environments::l2f{
         struct NONE{
             static constexpr T_TI DIM = 0;
         };
-
 
         template <typename T_T, typename T_TI, typename T_NEXT_COMPONENT = LastComponent<T_TI>>
         struct PositionSpecification{
@@ -430,26 +405,8 @@ namespace rl_tools::rl::environments::l2f{
             static constexpr TI DIM = NEXT_COMPONENT::DIM + CURRENT_DIM;
         };
 
-        template <typename T_T, typename T_TI, typename T_NEXT_COMPONENT = LastComponent<T_TI>>
-        struct FlightModeSpecification {
-            using T = T_T;
-            using TI = T_TI;
-            using NEXT_COMPONENT = T_NEXT_COMPONENT;
-            static constexpr bool PRIVILEGED = false;
-        };
-        template <typename T_T, typename T_TI, typename T_NEXT_COMPONENT = LastComponent<T_TI>>
-        struct FlightModeSpecificationPrivileged: FlightModeSpecification<T_T, T_TI, T_NEXT_COMPONENT>{
-            static constexpr bool PRIVILEGED = true;
-        };
-        template <typename SPEC>
-        struct FlightMode{
-            using T = typename SPEC::T;
-            using TI = typename SPEC::TI;
-            static constexpr bool PRIVILEGED = SPEC::PRIVILEGED;
-            using NEXT_COMPONENT = typename SPEC::NEXT_COMPONENT;
-            static constexpr TI CURRENT_DIM = 1;
-            static constexpr TI DIM = NEXT_COMPONENT::DIM + CURRENT_DIM;
-        };
+        // FlightModeSpecification ТА FlightMode ВИДАЛЕНО
+
         template <typename T_T, typename T_TI, typename T_NEXT_COMPONENT = LastComponent<T_TI>>
         struct RotorSpeedsSpecification {
             using T = T_T;
@@ -603,10 +560,10 @@ namespace rl_tools::rl::environments::l2f{
         T orientation[4];
         T linear_velocity[3];
         T angular_velocity[3];
-        T mode;
+        // mode ВИДАЛЕНО
     };
     template <typename T_SPEC>
-    struct StateLastAction: T_SPEC::NEXT_COMPONENT{ // This is necessary for the d_action term in the reward function. For action history observations please consider the variable length StateRotorsHistory
+    struct StateLastAction: T_SPEC::NEXT_COMPONENT{ 
         using SPEC = T_SPEC;
         using T = typename SPEC::T;
         using TI = typename SPEC::TI;
@@ -622,7 +579,7 @@ namespace rl_tools::rl::environments::l2f{
         using T = typename SPEC::T;
         using TI = typename SPEC::TI;
         using NEXT_COMPONENT = typename SPEC::NEXT_COMPONENT;
-        T linear_acceleration[3]; // this is just to save computation when simulating IMU measurements. Wihtout this we would need to recalculate the acceleration in the observation operation. This is not part of the minimal state in the sense that the transition dynamics are independent of the acceleration given the other parts of the state and the action
+        T linear_acceleration[3];
     };
 
     template <typename T_T, typename T_TI, T_TI T_HISTORY_LENGTH, typename T_NEXT_COMPONENT>
@@ -747,17 +704,18 @@ namespace rl_tools::rl::environments::l2f{
         Trajectory trajectory;
     };
 
-
     template <typename T, typename TI, TI ANGULAR_VELOCITY_HISTORY = 0>
-    using DefaultState = StateAngularVelocityDelay<StateAngularVelocityDelaySpecification<T, TI, ANGULAR_VELOCITY_HISTORY, StateLastAction<StateSpecification<T, TI, StateBase<StateSpecification<T, TI>>>>>>; // make sure to also change the observation to the delayed one
+    using DefaultState = StateAngularVelocityDelay<StateAngularVelocityDelaySpecification<T, TI, ANGULAR_VELOCITY_HISTORY, StateLastAction<StateSpecification<T, TI, StateBase<StateSpecification<T, TI>>>>>>; 
+    
     template <typename T, typename TI, TI ACTION_HISTORY_LENGTH = 1, TI ANGULAR_VELOCITY_HISTORY = 0, bool CLOSED_FORM = false>
     using DefaultActionHistoryState = StateRotorsHistory<StateRotorsHistorySpecification<T, TI, ACTION_HISTORY_LENGTH, CLOSED_FORM, StateRandomForce<StateSpecification<T, TI, DefaultState<T, TI, ANGULAR_VELOCITY_HISTORY>>>>>;
+    
+    // DefaultObservation ОНОВЛЕНО: FlightMode ПРИБРАНО З ЛАНЦЮЖКА
     template <typename T, typename TI, TI ANGULAR_VELOCITY_DELAY=0, typename NEXT_OBSERVATION = observation::LastComponent<TI>>
-    using DefaultObservation = observation::TrajectoryTrackingPosition<observation::TrajectoryTrackingPositionSpecification<T, TI, observation::OrientationRotationMatrix<observation::OrientationRotationMatrixSpecification<T, TI, observation::TrajectoryTrackingLinearVelocity<observation::TrajectoryTrackingLinearVelocitySpecification<T, TI, observation::AngularVelocityDelayed<observation::AngularVelocityDelayedSpecification<T, TI, ANGULAR_VELOCITY_DELAY, observation::FlightMode<observation::FlightModeSpecification<T, TI, NEXT_OBSERVATION>>>>>>>>>>;
+    using DefaultObservation = observation::TrajectoryTrackingPosition<observation::TrajectoryTrackingPositionSpecification<T, TI, observation::OrientationRotationMatrix<observation::OrientationRotationMatrixSpecification<T, TI, observation::TrajectoryTrackingLinearVelocity<observation::TrajectoryTrackingLinearVelocitySpecification<T, TI, observation::AngularVelocityDelayed<observation::AngularVelocityDelayedSpecification<T, TI, ANGULAR_VELOCITY_DELAY, NEXT_OBSERVATION>>>>>>>>;
+    
     template <typename T, typename TI, TI ACTION_HISTORY_LENGTH, TI ANGULAR_VELOCITY_DELAY=0, typename NEXT_OBSERVATION = observation::LastComponent<TI>>
     using DefaultActionHistoryObservation = DefaultObservation<T, TI, ANGULAR_VELOCITY_DELAY, observation::ActionHistory<observation::ActionHistorySpecification<T, TI, ACTION_HISTORY_LENGTH, NEXT_OBSERVATION>>>;
-
-
 }
 RL_TOOLS_NAMESPACE_WRAPPER_END
 
@@ -785,10 +743,7 @@ namespace rl_tools::rl::environments{
         using SPEC = T_SPEC;
         using T = typename SPEC::T;
         using TI = typename SPEC::TI;
-//        using PARAMETERS = typename SPEC::PARAMETERS;
         using Parameters = typename SPEC::PARAMETERS;
-//        using REWARD_FUNCTION = typename SPEC::PARAMETERS::MDP::REWARD_FUNCTION;
-//        static constexpr TI STATE_DIM = 13;
         static constexpr TI N_AGENTS = 1;
         static constexpr TI ACTION_DIM = 4;
         static constexpr TI EPISODE_STEP_LIMIT = SPEC::STATIC_PARAMETERS::EPISODE_STEP_LIMIT;

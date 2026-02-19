@@ -97,7 +97,6 @@ RLtoolsInferenceExecutorStatus rl_tools_inference_applications_l2f_control(RLtoo
     for(TI dim_i = 0; dim_i < 9; dim_i++){
         observation.orientation[dim_i] = c_observation->orientation[dim_i];
     }
-    observation.flight_mode = c_observation->flight_mode[0];
     for (TI action_i=0; action_i < OUTPUT_DIM; action_i++){
         observation.previous_action[action_i] = c_observation->previous_action[action_i];
     }

@@ -1,4 +1,3 @@
-
 #include "../../../../version.h"
 #if (defined(RL_TOOLS_DISABLE_INCLUDE_GUARDS) || !defined(RL_TOOLS_RL_ENVIRONMENTS_L2F_OPERATIONS_GENERIC_OBSERVE_H)) && (RL_TOOLS_USE_THIS_VERSION == 1)
 #pragma once
@@ -46,13 +45,17 @@ namespace rl_tools{
             using T = typename SPEC::T;
             using TI = typename DEVICE::index_t;
 
+            STATE desired_state;
+            get_desired_state(device, env, parameters, state, desired_state, rng);
+
             for(TI i = 0; i < 3; i++){
+                T error = state.position[i] - desired_state.position[i];
                 if constexpr(OBSERVATION_SPEC::PRIVILEGED && !SPEC::STATIC_PARAMETERS::PRIVILEGED_OBSERVATION_NOISE){
-                    set(observation, 0, i, state.position[i]);
+                    set(observation, 0, i, error);
                 }
                 else{
                     T noise = random::normal_distribution::sample(typename DEVICE::SPEC::RANDOM{}, (T)0, parameters.mdp.observation_noise.position, rng);
-                    set(observation, 0, i, state.position[i] + noise);
+                    set(observation, 0, i, error + noise);
                 }
             }
             auto next_observation = view(device, observation, matrix::ViewSpec<1, OBS_SPEC::COLS - OBSERVATION::CURRENT_DIM>{}, 0, OBSERVATION::CURRENT_DIM);
@@ -84,8 +87,7 @@ namespace rl_tools{
             using OBSERVATION = observation::OrientationRotationMatrix<OBSERVATION_SPEC>;
             static_assert(OBS_SPEC::COLS >= OBSERVATION::CURRENT_DIM);
             static_assert(OBS_SPEC::ROWS == 1);
-            const T* q = state.orientation;
-
+            const typename SPEC::T* q = state.orientation;
             set(observation, 0, 0, (1 - 2*q[2]*q[2] - 2*q[3]*q[3]));
             set(observation, 0, 1, (    2*q[1]*q[2] - 2*q[0]*q[3]));
             set(observation, 0, 2, (    2*q[1]*q[3] + 2*q[0]*q[2]));
@@ -112,13 +114,18 @@ namespace rl_tools{
             using OBSERVATION = observation::LinearVelocity<OBSERVATION_SPEC>;
             static_assert(OBS_SPEC::COLS >= OBSERVATION::CURRENT_DIM);
             static_assert(OBS_SPEC::ROWS == 1);
+            
+            STATE desired_state;
+            get_desired_state(device, env, parameters, state, desired_state, rng);
+
             for(TI i = 0; i < OBSERVATION::CURRENT_DIM; i++){
+                T error = state.linear_velocity[i] - desired_state.linear_velocity[i];
                 if constexpr(OBSERVATION_SPEC::PRIVILEGED && !SPEC::STATIC_PARAMETERS::PRIVILEGED_OBSERVATION_NOISE){
-                    set(observation, 0, i, state.linear_velocity[i]);
+                    set(observation, 0, i, error);
                 }
                 else{
                     T noise = random::normal_distribution::sample(typename DEVICE::SPEC::RANDOM{}, (T)0, parameters.mdp.observation_noise.linear_velocity, rng);
-                    set(observation, 0, i, state.linear_velocity[i] + noise);
+                    set(observation, 0, i, error + noise);
                 }
             }
             auto next_observation = view(device, observation, matrix::ViewSpec<1, OBS_SPEC::COLS - OBSERVATION::CURRENT_DIM>{}, 0, OBSERVATION::CURRENT_DIM);
@@ -131,13 +138,18 @@ namespace rl_tools{
             using OBSERVATION = observation::AngularVelocity<OBSERVATION_SPEC>;
             static_assert(OBS_SPEC::COLS >= OBSERVATION::CURRENT_DIM);
             static_assert(OBS_SPEC::ROWS == 1);
+
+            STATE desired_state;
+            get_desired_state(device, env, parameters, state, desired_state, rng);
+
             for(TI i = 0; i < OBSERVATION::CURRENT_DIM; i++){
+                T error = state.angular_velocity[i] - desired_state.angular_velocity[i];
                 if constexpr(OBSERVATION_SPEC::PRIVILEGED && !SPEC::STATIC_PARAMETERS::PRIVILEGED_OBSERVATION_NOISE){
-                    set(observation, 0, i, state.angular_velocity[i]);
+                    set(observation, 0, i, error);
                 }
                 else{
                     T noise = random::normal_distribution::sample(typename DEVICE::SPEC::RANDOM{}, (T)0, parameters.mdp.observation_noise.angular_velocity, rng);
-                    set(observation, 0, i, state.angular_velocity[i] + noise);
+                    set(observation, 0, i, error + noise);
                 }
             }
             auto next_observation = view(device, observation, matrix::ViewSpec<1, OBS_SPEC::COLS - OBSERVATION::CURRENT_DIM>{}, 0, OBSERVATION::CURRENT_DIM);
@@ -428,21 +440,8 @@ namespace rl_tools{
             auto next_observation = view(device, observation, matrix::ViewSpec<1, OBS_SPEC::COLS - OBSERVATION::CURRENT_DIM>{}, 0, OBSERVATION::CURRENT_DIM);
             observe(device, env, parameters, state, typename OBSERVATION::NEXT_COMPONENT{}, next_observation, rng);
         }
-        template<typename DEVICE, typename SPEC, typename PARAMETERS, typename STATE, typename OBSERVATION_SPEC, typename OBS_SPEC, typename RNG>
-        RL_TOOLS_FUNCTION_PLACEMENT static void _observe(DEVICE& device, const Multirotor<SPEC>& env, PARAMETERS& parameters, const STATE& state, observation::FlightMode<OBSERVATION_SPEC>, Matrix<OBS_SPEC>& observation, RNG& rng){
-            using T = typename SPEC::T;
-            using TI = typename DEVICE::index_t;
-            using OBSERVATION = observation::FlightMode<OBSERVATION_SPEC>;
-            static_assert(OBS_SPEC::COLS >= OBSERVATION::CURRENT_DIM);
-            static_assert(OBS_SPEC::ROWS == 1);
-            set(observation, 0, 0, state.mode);
-            auto next_observation = view(device, observation, matrix::ViewSpec<1, OBS_SPEC::COLS - OBSERVATION::CURRENT_DIM>{}, 0, OBSERVATION::CURRENT_DIM);
-            observe(device, env, parameters, state, typename OBSERVATION::NEXT_COMPONENT{}, next_observation, rng);
-        }
     }
 
 }
 RL_TOOLS_NAMESPACE_WRAPPER_END
 #endif
-
-

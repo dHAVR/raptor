@@ -14,7 +14,6 @@ extern "C" {
         float orientation[9]; // Rotation Matrix
         float linear_velocity[3];
         float angular_velocity[3];
-        float flight_mode[1]; // Flight Mode input for the neural network
         float previous_action[RL_TOOLS_INTERFACE_APPLICATIONS_L2F_ACTION_DIM];
     } RLtoolsInferenceApplicationsL2FObservation;
     typedef struct {

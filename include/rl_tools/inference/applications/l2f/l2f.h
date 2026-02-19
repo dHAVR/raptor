@@ -25,7 +25,6 @@ namespace rl_tools::inference::applications{
             T orientation[9]; // Rotation Matrix: R11, R12, R13, R21, R22, R23, R31, R32, R33
             T linear_velocity[3];
             T angular_velocity[3];
-            T flight_mode;
             T previous_action[4];
         };
         template <typename SPEC>

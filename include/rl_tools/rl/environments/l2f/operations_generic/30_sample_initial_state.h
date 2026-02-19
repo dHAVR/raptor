@@ -17,30 +17,33 @@ namespace rl_tools{
     template<typename DEVICE, typename SPEC, typename PARAMETERS, typename STATE, typename RNG>
     RL_TOOLS_FUNCTION_PLACEMENT static void sample_initial_state(DEVICE& device, rl::environments::Multirotor<SPEC>& env, PARAMETERS& parameters, STATE& state, RNG& rng);
     namespace rl::environments::l2f{
-        // Допоміжна функція для генерації нахилів
         template <typename DEVICE, typename T, typename RNG>
-        void sample_orientation(DEVICE& device, T limit, T output[4], RNG& rng){
-            // Uniform sampling on the desired angle range
-            T u = random::uniform_real_distribution(device.random, (T)0, (T)1, rng);
-            T v = random::uniform_real_distribution(device.random, (T)0, (T)1, rng);
-            T phi = 2.0 * math::PI<T> * u;
-            T cos_theta = 1.0 - 2.0 * v;
-            T sin_theta = math::sqrt(device.math, 1.0 - cos_theta*cos_theta);
-            T x = sin_theta * math::cos(device.math, phi);
-            T y = sin_theta * math::sin(device.math, phi);
-            T z = cos_theta;
-            // Генеруємо кут від 0 до limit (в даному випадку до 57 градусів)
-            T angle = random::uniform_real_distribution(device.random, (T)0, (T)1, rng) * limit;
+ void sample_orientation(DEVICE& device, T limit, T output[4], RNG& rng){
+            // 1. Хардкодимо ліміти (в радіанах)
+            // 0.5 рад ≈ 28.6 градусів (безпечно для старту)
+            // PI ≈ 180 градусів (разом дає повне коло 360 для Yaw)
+            const T fixed_max_roll_pitch = 0.5;
+            const T fixed_max_yaw = math::PI<T>; 
 
-            // Quaternion = [cos(angle/2), sin(angle/2)*axis]
-            T half = 0.5 * angle;
-            T s = math::sin(device.math, half);
-            output[0] = math::cos(device.math, half);
-            output[1] = x * s;
-            output[2] = y * s;
-            output[3] = z * s;
+            // 2. Генеруємо випадкові кути в захардкоджених діапазонах
+            T roll  = random::uniform_real_distribution(device.random, -fixed_max_roll_pitch, fixed_max_roll_pitch, rng);
+            T pitch = random::uniform_real_distribution(device.random, -fixed_max_roll_pitch, fixed_max_roll_pitch, rng);
+            T yaw   = random::uniform_real_distribution(device.random, -fixed_max_yaw, fixed_max_yaw, rng);
+
+            // 3. Обчислюємо компоненти для перетворення в кватерніон
+            T cr = math::cos(device.math, roll * 0.5);
+            T sr = math::sin(device.math, roll * 0.5);
+            T cp = math::cos(device.math, pitch * 0.5);
+            T sp = math::sin(device.math, pitch * 0.5);
+            T cy = math::cos(device.math, yaw * 0.5);
+            T sy = math::sin(device.math, yaw * 0.5);
+
+            // 4. Записуємо фінальний кватерніон [w, x, y, z]
+            output[0] = cr * cp * cy + sr * sp * sy; // w
+            output[1] = sr * cp * cy - cr * sp * sy; // x
+            output[2] = cr * sp * cy + sr * cp * sy; // y
+            output[3] = cr * cp * sy - sr * sp * cy; // z
         }
-
         template<typename DEVICE, typename SPEC, typename PARAMETERS, typename STATE_SPEC, typename RNG>
         RL_TOOLS_FUNCTION_PLACEMENT static void _sample_initial_state(DEVICE& device, Multirotor<SPEC>& env, PARAMETERS& parameters, StateBase<STATE_SPEC>& state, RNG& rng, bool inherited_guidance = false){
             typename DEVICE::SPEC::MATH math_dev;
@@ -50,8 +53,6 @@ namespace rl_tools{
             using TI = typename DEVICE::index_t;
             bool guidance;
             guidance = random::uniform_real_distribution(random_dev, (T)0, (T)1, rng) < parameters.mdp.init.guidance;
-            
-            // 1. Позиція
             if(!guidance){
                 for(TI i = 0; i < 3; i++){
                     state.position[i] = random::uniform_real_distribution(random_dev, -parameters.mdp.init.max_position, parameters.mdp.init.max_position, rng);
@@ -62,43 +63,15 @@ namespace rl_tools{
                     state.position[i] = 0;
                 }
             }
-
-            // 2. Генерація Модів (0, 1, 2)
-            if(parameters.mdp.init.fixed_mode >= 0){
-                state.mode = (T)parameters.mdp.init.fixed_mode;
+            if(parameters.mdp.init.max_angle > 0 && !guidance){
+                sample_orientation(device, parameters.mdp.init.max_angle, state.orientation, rng);
             }
             else{
-                state.mode = (T)(int)random::uniform_real_distribution(random_dev, (T)0, (T)3, rng);
-            }
-            if(state.mode >= 3) state.mode = 2; 
-            if(state.mode < 0) state.mode = 0;
-
-            // 3. Орієнтація
-            if((int)state.mode == 1){
-                // MODE 1 (Rotate): Ідеальний горизонт, повний рандом по Yaw (360)
-                T random_yaw = random::uniform_real_distribution(random_dev, (T)-math::PI<T>, (T)math::PI<T>, rng);
-                
-                state.orientation[0] = math::cos(device.math, random_yaw / 2); 
-                state.orientation[1] = 0; 
-                state.orientation[2] = 0; 
-                state.orientation[3] = math::sin(device.math, random_yaw / 2); 
-            }
-            else if(!guidance){
-                // MODE 0, 2 (Hover, Move):
-                // Тут ми ставимо ліміт 1.0 радіан (~57 градусів).
-                // Дрон буде з'являтися під сильним нахилом і вчитися вирівнюватися.
-                T tilt_limit_57_deg = (T)1.0; 
-                sample_orientation(device, tilt_limit_57_deg, state.orientation, rng);
-            }
-            else{
-                // Ідеально рівний старт (для guidance)
-                state.orientation[0] = 1; 
-                state.orientation[1] = 0; 
-                state.orientation[2] = 0; 
+                state.orientation[0] = 1;
+                state.orientation[1] = 0;
+                state.orientation[2] = 0;
                 state.orientation[3] = 0;
             }
-            
-            // 4. Швидкості
             if(!guidance) {
                 for(TI i = 0; i < 3; i++){
                     state.linear_velocity[i] = random::uniform_real_distribution(random_dev, -parameters.mdp.init.max_linear_velocity, parameters.mdp.init.max_linear_velocity, rng);
@@ -116,8 +89,6 @@ namespace rl_tools{
                 }
             }
         }
-
-        // --- Шаблони (без змін) ---
         template<typename DEVICE, typename SPEC, typename PARAMETERS, typename STATE_SPEC, typename RNG>
         RL_TOOLS_FUNCTION_PLACEMENT static void _sample_initial_state(DEVICE& device, Multirotor<SPEC>& env, PARAMETERS& parameters, StateLastAction<STATE_SPEC>& state, RNG& rng){
             using TI = typename DEVICE::index_t;
@@ -159,7 +130,9 @@ namespace rl_tools{
         RL_TOOLS_FUNCTION_PLACEMENT static void _sample_initial_state(DEVICE& device, Multirotor<SPEC>& env, PARAMETERS& parameters, StateRandomForce<STATE_SPEC>& state, RNG& rng){
             typename DEVICE::SPEC::RANDOM random_dev;
             using T = typename SPEC::T;
+    //        bool guidance = random::uniform_real_distribution(random_dev, (T)0, (T)1, rng) < parameters.mdp.init.guidance;
             sample_initial_state(device, env, parameters, static_cast<typename STATE_SPEC::NEXT_COMPONENT&>(state), rng);
+    //        if(!guidance){
             {
                 auto distribution = parameters.disturbances.random_force;
                 state.force[0] = random::normal_distribution::sample(random_dev, (T)distribution.mean, (T)distribution.std, rng);
@@ -172,6 +145,16 @@ namespace rl_tools{
                 state.torque[1] = random::normal_distribution::sample(random_dev, (T)distribution.mean, (T)distribution.std, rng);
                 state.torque[2] = random::normal_distribution::sample(random_dev, (T)distribution.mean, (T)distribution.std/100, rng);
             }
+    //        }
+    //        else{
+    //            state.force[0] = 0;
+    //            state.force[1] = 0;
+    //            state.force[2] = 0;
+    //            state.torque[0] = 0;
+    //            state.torque[1] = 0;
+    //            state.torque[2] = 0;
+    //        }
+
         }
         template<typename DEVICE, typename SPEC, typename PARAMETERS, typename STATE_SPEC, typename RNG>
         RL_TOOLS_FUNCTION_PLACEMENT static void _sample_initial_state(DEVICE& device, Multirotor<SPEC>& env, PARAMETERS& parameters, StateRandomOrientationOffset<STATE_SPEC>& state, RNG& rng){

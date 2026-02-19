@@ -13,89 +13,45 @@ namespace rl_tools::rl::environments::l2f::parameters::reward_functions{
     RL_TOOLS_FUNCTION_PLACEMENT void reward_components(DEVICE& device, const Multirotor<SPEC>& env, const typename Multirotor<SPEC>::Parameters& parameters, const Squared<T>& reward_parameters, const StateBase<STATE_SPEC>& state_dispatch, const STATE& state, const Matrix<ACTION_SPEC>& action,  const STATE& next_state, typename Squared<T>::Components& components, RNG& rng){
         using TI = typename DEVICE::index_t;
         constexpr TI ACTION_DIM = rl::environments::Multirotor<SPEC>::ACTION_DIM;
-        STATE desired_state;
         
-        // Отримуємо цільову позицію і орієнтацію
+        STATE desired_state;
         get_desired_state(device, env, parameters, state, desired_state, rng);
 
-        int mode = (int)state.mode;
+        // ВИПРАВЛЕНО: Правильна метрика помилки орієнтації (карає за відхилення Roll, Pitch та Yaw)
+        // Кватерніон ідеального стану: [1, 0, 0, 0]. Помилка = 1 - w^2
+        components.orientation_cost = (T)1.0 - (state.orientation[0] * state.orientation[0]);
 
-        // --- 1. Orientation Logic ---
-        
-        T qw = state.orientation[0];
-        T qx = state.orientation[1];
-        T qy = state.orientation[2];
-        T qz = state.orientation[3];
-        
-        T t_qw = desired_state.orientation[0];
-        T t_qx = desired_state.orientation[1];
-        T t_qy = desired_state.orientation[2];
-        T t_qz = desired_state.orientation[3];
-        
-        // A. Повна помилка (Yaw + Pitch + Roll)
-        // Використовується, коли нам важливо, куди дивиться ніс дрона.
-        T q_dot = t_qw*qw + t_qx*qx + t_qy*qy + t_qz*qz;
-        T abs_q_dot = math::abs(device.math, q_dot);
-        if (abs_q_dot > 1.0) abs_q_dot = 1.0;
-        T full_rotation_error = 2 * math::acos(device.math, abs_q_dot);
-
-        // B. Помилка стабілізації (Тільки Pitch + Roll)
-        // Використовується, щоб дрон тримав горизонт і не падав.
-        T tilt_penalty = 2 * (qx*qx + qy*qy); 
-        
-        if (mode == 1) {
-            // MODE 1 (Rotate):
-            // Дрон бачить ціль Yaw і активно повертається до неї.
-            // + Tilt penalty для плоского спіну.
-            components.orientation_cost = full_rotation_error + tilt_penalty;
-        } 
-        else {
-            // MODE 0, 2 (Hover/Move):
-            // Дрон "сліпий" до компасу (Yaw). Він ігнорує full_rotation_error.
-            // Ми вимагаємо тільки горизонтальної стабілізації.
-            components.orientation_cost = tilt_penalty;
-        }
-
-        // --- 2. Angular Velocity (Демпфер/Гальмо) ---
-        
-        T angular_vel_magnitude = math::sqrt(device.math, 
-            math::max(device.math, (T)0, state.angular_velocity[0] * state.angular_velocity[0] + 
-            state.angular_velocity[1] * state.angular_velocity[1] + 
-            state.angular_velocity[2] * state.angular_velocity[2])
-        );
-
-        // Якщо Mode 0 або 2:
-        // Ми збільшуємо штраф у 5 разів. Дрон буде намагатися зупинити будь-яке обертання.
-        // Це змушує його "зафіксувати" той кут, на якому він зараз знаходиться.
-        T angular_vel_weight_multiplier = (mode == 1) ? (T)1.0 : (T)5.0;
-
-        components.angular_vel_cost = angular_vel_weight_multiplier * angular_vel_magnitude;
-
-
-        // --- 3. Position Cost ---
+        // Position Cost
         T x = state.position[0] - desired_state.position[0];
         T y = state.position[1] - desired_state.position[1];
         T z = state.position[2] - desired_state.position[2];
-        components.position_cost = math::sqrt(device.math, math::max(device.math, (T)0, x*x + y*y + z*z));
-        
+        components.position_cost = math::sqrt(device.math, x*x + y*y + z*z);
         if(reward_parameters.position_clip > 0){
             components.position_cost = math::min(device.math, components.position_cost, reward_parameters.position_clip);
         }
 
-        // --- 4. Velocity & Accel Costs ---
+        // Linear Velocity Cost
         T vx = state.linear_velocity[0] - desired_state.linear_velocity[0];
         T vy = state.linear_velocity[1] - desired_state.linear_velocity[1];
         T vz = state.linear_velocity[2] - desired_state.linear_velocity[2];
-        components.linear_vel_cost = math::sqrt(device.math, math::max(device.math, (T)0, vx*vx + vy*vy + vz*vz));
+        components.linear_vel_cost = math::sqrt(device.math, vx*vx + vy*vy + vz*vz);
 
+        // ВИПРАВЛЕНО: Angular Velocity Cost (тепер відносно desired_state)
+        T wx = state.angular_velocity[0] - desired_state.angular_velocity[0];
+        T wy = state.angular_velocity[1] - desired_state.angular_velocity[1];
+        T wz = state.angular_velocity[2] - desired_state.angular_velocity[2];
+        components.angular_vel_cost = math::sqrt(device.math, wx*wx + wy*wy + wz*wz);
+
+        // Accelerations
         T linear_acc[3];
         T angular_acc[3];
         rl_tools::utils::vector_operations::sub<DEVICE, T, 3>(next_state.linear_velocity, state.linear_velocity, linear_acc);
-        components.linear_acc_cost = math::sqrt(device.math, math::max(device.math, (T)0, linear_acc[0] * linear_acc[0] + linear_acc[1] * linear_acc[1] + linear_acc[2] * linear_acc[2])) / parameters.integration.dt;
+        components.linear_acc_cost = math::sqrt(device.math, linear_acc[0] * linear_acc[0] + linear_acc[1] * linear_acc[1] + linear_acc[2] * linear_acc[2]) / parameters.integration.dt;
+        
         rl_tools::utils::vector_operations::sub<DEVICE, T, 3>(next_state.angular_velocity, state.angular_velocity, angular_acc);
-        components.angular_acc_cost = math::sqrt(device.math, math::max(device.math, (T)0, angular_acc[0] * angular_acc[0] + angular_acc[1] * angular_acc[1] + angular_acc[2] * angular_acc[2])) / parameters.integration.dt;
+        components.angular_acc_cost = math::sqrt(device.math, angular_acc[0] * angular_acc[0] + angular_acc[1] * angular_acc[1] + angular_acc[2] * angular_acc[2]) / parameters.integration.dt;
 
-        // --- 5. Action Cost ---
+        // Action Cost
         T action_diff[ACTION_DIM];
         for(TI action_i = 0; action_i < ACTION_DIM; action_i++){
             T action_throttle_relative = (get(action, 0, action_i) + (T)1.0)/(T)2.0;
@@ -104,8 +60,6 @@ namespace rl_tools::rl::environments::l2f::parameters::reward_functions{
         components.action_cost = rl_tools::utils::vector_operations::norm<DEVICE, T, ACTION_DIM>(action_diff);
         components.action_cost *= components.action_cost;
     }
-
-    // --- Template Instantiations for different state types ---
 
     template<typename DEVICE, typename SPEC, typename STATE_SPEC, typename STATE, typename ACTION_SPEC, typename T, typename RNG>
     RL_TOOLS_FUNCTION_PLACEMENT void reward_components(DEVICE& device, const Multirotor<SPEC>& env, const typename Multirotor<SPEC>::Parameters& parameters, const Squared<T>& reward_parameters, const StateLastAction<STATE_SPEC>& state_dispatch, const STATE& state, const Matrix<ACTION_SPEC>& action,  const STATE& next_state, typename Squared<T>::Components& components, RNG& rng) {
@@ -165,8 +119,6 @@ namespace rl_tools::rl::environments::l2f::parameters::reward_functions{
     template<typename DEVICE, typename SPEC, typename ACTION_SPEC, typename STATE, typename T, typename RNG>
     RL_TOOLS_FUNCTION_PLACEMENT typename SPEC::T reward(DEVICE& device, const Multirotor<SPEC>& env, const typename Multirotor<SPEC>::Parameters& parameters, const Squared<T>& reward_parameters, const STATE& state, const Matrix<ACTION_SPEC>& action,  const STATE& next_state, RNG& rng){
         typename Squared<T>::Components components;
-        
-        // initializing optional components
         components.d_action_cost = 0;
         components.position_error_integral_cost = 0;
         reward_components(device, env, parameters, reward_parameters, state, state, action, next_state, components, rng);
@@ -175,18 +127,7 @@ namespace rl_tools::rl::environments::l2f::parameters::reward_functions{
         components.weighted_cost += reward_parameters.position * components.position_cost;
         components.weighted_cost += reward_parameters.orientation * components.orientation_cost;
         components.weighted_cost += reward_parameters.linear_velocity * components.linear_vel_cost;
-        
-        // --- SAFETY HACK: Захист від нульової ваги ---
-        // Якщо в конфігурації вага стоїть 0, ми ставимо 0.05.
-        // Це гарантує, що гальмо (angular_vel_cost) буде працювати,
-        // і дрон зможе фіксувати кут у Mode 0 і 2.
-        T ang_vel_weight = reward_parameters.angular_velocity;
-        if(ang_vel_weight < 0.00001){
-            ang_vel_weight = (T)0.05; 
-        }
-        components.weighted_cost += ang_vel_weight * components.angular_vel_cost;
-        // ---------------------------------------------
-
+        components.weighted_cost += reward_parameters.angular_velocity * components.angular_vel_cost;
         components.weighted_cost += reward_parameters.linear_acceleration * components.linear_acc_cost;
         components.weighted_cost += reward_parameters.angular_acceleration * components.angular_acc_cost;
         components.weighted_cost += reward_parameters.action * components.action_cost;

@@ -22,7 +22,7 @@ namespace builder{
                 static constexpr bool ENTROPY_BONUS_NEXT_STEP = false;
             };
             static constexpr TI N_ENVIRONMENTS = 1;
-            static constexpr TI STEP_LIMIT = 700000;
+            static constexpr TI STEP_LIMIT = 1000000;
             static constexpr TI REPLAY_BUFFER_CAP = STEP_LIMIT;
             static constexpr TI ACTOR_NUM_LAYERS = 3;
             static constexpr TI ACTOR_HIDDEN_DIM = 64;
