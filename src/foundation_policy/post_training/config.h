@@ -9,23 +9,23 @@ struct OPTIONS_POST_TRAINING: OPTIONS_PRE_TRAINING{
 
 static_assert(sizeof(TI) == 8);
 // constants parameters
-constexpr TI NUM_EPISODES = 50; // ВИПРАВЛЕНО: Збільшено з 10 для стабільності градієнта
+constexpr TI NUM_EPISODES = 50;
 constexpr TI NUM_EPISODES_EVAL = 100;
-constexpr TI N_EPOCH = 500;
+constexpr TI N_EPOCH = 1000;
 constexpr TI N_PRE_TRAINING_SEEDS = 1;
 constexpr TI SEQUENCE_LENGTH = 500;
 constexpr TI BATCH_SIZE = 64;
-constexpr T SOLVED_RETURN = 100;
-constexpr TI HIDDEN_DIM = 64; 
-constexpr TI NUM_TEACHERS = 50;
+constexpr T SOLVED_RETURN = 300;
+constexpr TI HIDDEN_DIM = 16;
+constexpr TI NUM_TEACHERS = 100;
 constexpr TI NUM_ACTIVE_TEACHERS = NUM_TEACHERS;
 constexpr TI EPOCH_TEACHER_FORCING = 10;
 constexpr bool DYNAMIC_ALLOCATION = true;
 constexpr bool SHUFFLE = true;
 constexpr bool TEACHER_DETERMINISTIC = true;
 constexpr bool ON_POLICY = true;
-constexpr TI TEACHER_STUDENT_MIX = 1; // added teacher epochs in DAgger epochs
-constexpr bool STEADY_STATE_POSITION_CORRECTION = false;
+constexpr TI TEACHER_STUDENT_MIX = 0; // added teacher epochs in DAgger epochs
+constexpr bool STEADY_STATE_POSITION_CORRECTION = true;
 constexpr TI STEADY_STATE_POSITION_OFFSET_ESTIMATION_START = 250;
 
 
@@ -72,8 +72,8 @@ using CAPABILITY = rlt::nn::capability::Gradient<rlt::nn::parameters::Adam, DYNA
 using INPUT_SHAPE = rlt::tensor::Shape<TI, SEQUENCE_LENGTH, BATCH_SIZE, ENVIRONMENT::Observation::DIM>;
 using ACTOR = rlt::nn_models::sequential::Build<CAPABILITY, MODULE_CHAIN, INPUT_SHAPE>;
 struct ADAM_PARAMETERS: rlt::nn::optimizers::adam::DEFAULT_PARAMETERS_TENSORFLOW<T>{
-    static constexpr T ALPHA = 0.0003; // ВИПРАВЛЕНО: Трохи збільшив Learning Rate (було 0.0001)
-    static constexpr T WEIGHT_DECAY = 1e-3;
+    static constexpr T ALPHA = 0.0001;
+    static constexpr T WEIGHT_DECAY = 0;
     static constexpr T WEIGHT_DECAY_INPUT = 0;
     static constexpr T WEIGHT_DECAY_OUTPUT = 0;
 };

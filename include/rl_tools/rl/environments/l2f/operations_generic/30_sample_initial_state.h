@@ -18,11 +18,11 @@ namespace rl_tools{
     RL_TOOLS_FUNCTION_PLACEMENT static void sample_initial_state(DEVICE& device, rl::environments::Multirotor<SPEC>& env, PARAMETERS& parameters, STATE& state, RNG& rng);
     namespace rl::environments::l2f{
         template <typename DEVICE, typename T, typename RNG>
- void sample_orientation(DEVICE& device, T limit, T output[4], RNG& rng){
+        void sample_orientation(DEVICE& device, T limit, T output[4], RNG& rng){
             // 1. Хардкодимо ліміти (в радіанах)
             // 0.5 рад ≈ 28.6 градусів (безпечно для старту)
             // PI ≈ 180 градусів (разом дає повне коло 360 для Yaw)
-            const T fixed_max_roll_pitch = 0.5;
+            const T fixed_max_roll_pitch = 0.78;
             const T fixed_max_yaw = math::PI<T>; 
 
             // 2. Генеруємо випадкові кути в захардкоджених діапазонах
@@ -52,7 +52,8 @@ namespace rl_tools{
             using T = typename STATE_SPEC::T;
             using TI = typename DEVICE::index_t;
             bool guidance;
-            guidance = random::uniform_real_distribution(random_dev, (T)0, (T)1, rng) < parameters.mdp.init.guidance;
+            //guidance = random::uniform_real_distribution(random_dev, (T)0, (T)1, rng) < parameters.mdp.init.guidance;
+            guidance = false;
             if(!guidance){
                 for(TI i = 0; i < 3; i++){
                     state.position[i] = random::uniform_real_distribution(random_dev, -parameters.mdp.init.max_position, parameters.mdp.init.max_position, rng);
@@ -63,7 +64,7 @@ namespace rl_tools{
                     state.position[i] = 0;
                 }
             }
-            if(parameters.mdp.init.max_angle > 0 && !guidance){
+            if(!guidance){
                 sample_orientation(device, parameters.mdp.init.max_angle, state.orientation, rng);
             }
             else{

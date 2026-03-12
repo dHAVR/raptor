@@ -17,9 +17,15 @@ namespace rl_tools::rl::environments::l2f::parameters::reward_functions{
         STATE desired_state;
         get_desired_state(device, env, parameters, state, desired_state, rng);
 
-        // ВИПРАВЛЕНО: Правильна метрика помилки орієнтації (карає за відхилення Roll, Pitch та Yaw)
-        // Кватерніон ідеального стану: [1, 0, 0, 0]. Помилка = 1 - w^2
-        components.orientation_cost = (T)1.0 - (state.orientation[0] * state.orientation[0]);
+        // ВИПРАВЛЕНО: Відносна помилка орієнтації (Quaternion Error)
+        // Обчислюємо скалярний добуток між поточним та цільовим кватерніоном.
+        // Це дозволяє дрону крутитись на будь-який Yaw, заданий в desired_state.
+        T w_err = state.orientation[0] * desired_state.orientation[0] + 
+                  state.orientation[1] * desired_state.orientation[1] + 
+                  state.orientation[2] * desired_state.orientation[2] + 
+                  state.orientation[3] * desired_state.orientation[3];
+
+        components.orientation_cost = (T)1.0 - (w_err * w_err);
 
         // Position Cost
         T x = state.position[0] - desired_state.position[0];
@@ -36,7 +42,7 @@ namespace rl_tools::rl::environments::l2f::parameters::reward_functions{
         T vz = state.linear_velocity[2] - desired_state.linear_velocity[2];
         components.linear_vel_cost = math::sqrt(device.math, vx*vx + vy*vy + vz*vz);
 
-        // ВИПРАВЛЕНО: Angular Velocity Cost (тепер відносно desired_state)
+        // Angular Velocity Cost
         T wx = state.angular_velocity[0] - desired_state.angular_velocity[0];
         T wy = state.angular_velocity[1] - desired_state.angular_velocity[1];
         T wz = state.angular_velocity[2] - desired_state.angular_velocity[2];

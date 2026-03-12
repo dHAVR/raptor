@@ -21,7 +21,7 @@ int main(int argc, char** argv){
     RNG rng;
     rlt::malloc(device, rng);
     TI seed = 0;
-    TI N = 50;
+    TI N = 1000;
     rlt::init(device, rng, seed);
     ENVIRONMENT env;
     ENVIRONMENT::Parameters params;
@@ -47,11 +47,11 @@ int main(int argc, char** argv){
 
         parameters.domain_randomization = {
             1.5, // thrust_to_weight_min;
-            3.5, // thrust_to_weight_max;
-            20, // torque_to_inertia_min;
-            100, // torque_to_inertia_max;
-            1.5, // mass_min;
-            4.0, // mass_max;
+            5.0, // thrust_to_weight_max;
+            40, // torque_to_inertia_min;
+            1200, // torque_to_inertia_max;
+            0.02, // mass_min;
+            5.00, // mass_max;
             0.1, // mass_size_deviation;
             0.03, // motor_time_constant_rising_min;
             0.10, // motor_time_constant_rising_max;
@@ -60,7 +60,7 @@ int main(int argc, char** argv){
             0.005, // rotor_torque_constant_min;
             0.05, // rotor_torque_constant_max;
             0.0, // orientation_offset_angle_max;
-            0.5, // disturbance_force_max;
+            0.3  // disturbance_force_max;
         };
     };
     overwrite(env.parameters);
@@ -105,5 +105,4 @@ int main(int argc, char** argv){
         output << rlt::json(device, env, params_copy);
         output.close();
     }
-
 }
